@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Agent Web Interface</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f9f9f9;
+        }
+        header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        h1 {
+            color: #2c3e50;
+        }
+        .chat-container {
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 20px;
+            height: 400px;
+            overflow-y: auto;
+            margin-bottom: 20px;
+            background-color: white;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .message {
+            margin-bottom: 10px;
+            padding: 10px;
+            border-radius: 8px;
+            max-width: 80%;
+            word-wrap: break-word;
+        }
+        .user-message {
+            background-color: #e1f5fe;
+            margin-left: auto;
+            text-align: right;
+        }
+        .agent-message {
+            background-color: #f1f1f1;
+        }
+        .error-message {
+            background-color: #ffebee;
+            color: #c62828;
+            border-left: 4px solid #c62828;
+        }
+        .input-area {
+            display: flex;
+            gap: 10px;
+        }
+        input[type="text"] {
+            flex: 1;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 16px;
+        }
+        button {
+            padding: 12px 20px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        .system-message {
+            text-align: center;
+            color: #666;
+            font-style: italic;
+            margin: 10px 0;
+        }
+        .loading {
+            text-align: center;
+            margin: 10px 0;
+        }
+        .loading::after {
+            content: "...";
+            animation: dots 1.5s steps(5, end) infinite;
+        }
+        @keyframes dots {
+            0%, 20% {
+                content: ".";
+            }
+            40% {
+                content: "..";
+            }
+            60%, 100% {
+                content: "...";
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Message Shortener Agent</h1>
+        <p>Type a message and the agent will shorten it for you</p>
+    </header>
+    
+    <div class="chat-container" id="chatContainer">
+        <div class="system-message">Start a conversation by typing a message below</div>
+    </div>
+    
+    <div class="input-area">
+        <input type="text" id="messageInput" placeholder="Type your message...">
+        <button id="sendButton" onclick="sendMessage()">Send</button>
+    </div>
+
+    <script>
+        let sessionId = null;
+        let isProcessing = false;
+        const sendButton = document.getElementById('sendButton');
+        const messageInput = document.getElementById('messageInput');
+        
+        function addMessage(message, type) {
+            const chatContainer = document.getElementById('chatContainer');
+            const messageDiv = document.createElement('div');
+            
+            if (type === 'user') {
+                messageDiv.className = 'message user-message';
+            } else if (type === 'agent') {
+                messageDiv.className = 'message agent-message';
+            } else if (type === 'error') {
+                messageDiv.className = 'message error-message';
+            } else if (type === 'system') {
+                messageDiv.className = 'system-message';
+            } else if (type === 'loading') {
+                messageDiv.className = 'loading';
+                messageDiv.id = 'loadingMessage';
+            }
+            
+            messageDiv.textContent = message;
+            chatContainer.appendChild(messageDiv);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+        
+        function sendMessage() {
+            const message = messageInput.value.trim();
+            
+            if (message === '' || isProcessing) return;
+            
+            // Disable input during processing
+            isProcessing = true;
+            sendButton.disabled = true;
+            messageInput.disabled = true;
+            
+            addMessage(message, 'user');
+            messageInput.value = '';
+            
+            // Add loading indicator
+            addMessage('Thinking', 'loading');
+            
+            fetch('/api/chat', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    message: message,
+                    user_id: 'web_user',
+                    session_id: sessionId
+                }),
+            })
+            .then(response => {
+                if (!response.ok) {
+                    return response.json().then(data => {
+                        throw new Error(data.error || 'An error occurred while processing your request');
+                    });
+                }
+                return response.json();
+            })
+            .then(data => {
+                // Remove loading indicator
+                const loadingMessage = document.getElementById('loadingMessage');
+                if (loadingMessage) {
+                    loadingMessage.remove();
+                }
+                
+                addMessage(data.response, 'agent');
+                sessionId = data.session_id;
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                
+                // Remove loading indicator
+                const loadingMessage = document.getElementById('loadingMessage');
+                if (loadingMessage) {
+                    loadingMessage.remove();
+                }
+                
+                addMessage(`Error: ${error.message}`, 'error');
+            })
+            .finally(() => {
+                // Re-enable input
+                isProcessing = false;
+                sendButton.disabled = false;
+                messageInput.disabled = false;
+                messageInput.focus();
+            });
+        }
+        
+        // Allow pressing Enter to send a message
+        messageInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter' && !isProcessing) {
+                sendMessage();
+            }
+        });
+    </script>
+</body>
+</html> 
